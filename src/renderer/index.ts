@@ -1,7 +1,20 @@
 import { renderMarkdown } from './markdown';
 import Elements from './elements';
 
+window.api.onFileOpen((content: string) => {
+    Elements.MarkdownView.value = content;
+    renderMarkdown(content);
+});
+
 Elements.MarkdownView.addEventListener('input', async () => {
-  const markdown = Elements.MarkdownView.value;
-  renderMarkdown(markdown);
+    const markdown = Elements.MarkdownView.value;
+    renderMarkdown(markdown);
+});
+
+Elements.OpenFileButton.addEventListener('click', () => {
+    window.api.showOpenDialog();
+});
+
+Elements.ExportHtmlButton.addEventListener('click', () => {
+    window.api.showExportHtmlDialog(Elements.RenderedView.innerHTML);
 });
