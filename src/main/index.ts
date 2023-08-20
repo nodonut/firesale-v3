@@ -1,10 +1,43 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import {
+    app,
+    BrowserWindow,
+    dialog,
+    ipcMain,
+    shell,
+    Menu,
+    MenuItemConstructorOptions,
+} from 'electron';
 import { readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { join, basename } from 'path';
 
 type MarkdownFile = {
     content?: string;
     filePath?: string;
+};
+
+const isMac = process.platform === 'darwin';
+const getCurrentFile = async (browserWindow?: BrowserWindow) => {
+    if (currentFile.filePath) return currentFile.filePath;
+    if (!browserWindow) return;
+
+    return showSaveDialog(browserWindow);
+};
+
+const setCurrentFile = (
+    browserWindow: BrowserWindow,
+    filePath: string,
+    content: string,
+) => {
+    currentFile.filePath = filePath;
+    currentFile.content = content;
+
+    app.addRecentDocument(filePath);
+    browserWindow.setTitle(`${basename(filePath)} - ${app.name}`);
+    browserWindow.setRepresentedFilename(filePath);
+};
+
+const hasChanges = (content: string) => {
+    return currentFile.content !== content;
 };
 
 let currentFile: MarkdownFile = {
@@ -37,6 +70,8 @@ const createWindow = () => {
     mainWindow.webContents.openDevTools({
         mode: 'detach',
     });
+
+    return mainWindow;
 };
 
 app.on('ready', createWindow);
@@ -87,6 +122,8 @@ const showExportHtmlDialog = async (
 const openFile = async (browserWindow: BrowserWindow, filePath: string) => {
     const content = await readFile(filePath, { encoding: 'utf8' });
 
+    setCurrentFile(browserWindow, filePath, content);
+
     browserWindow.webContents.send('file-opened', content, filePath);
 };
 
@@ -126,11 +163,11 @@ const showSaveDialog = async (browserWindow: BrowserWindow) => {
 };
 
 const saveFile = async (browserWindow: BrowserWindow, content: string) => {
-    const filePath =
-        currentFile.filePath ?? (await showSaveDialog(browserWindow));
+    const filePath = await getCurrentFile(browserWindow);
     if (!filePath) return;
 
     await writeFile(filePath, content, { encoding: 'utf8' });
+    setCurrentFile(browserWindow, filePath, content);
 };
 
 ipcMain.on('save-file', async (event, content: string) => {
@@ -139,3 +176,52 @@ ipcMain.on('save-file', async (event, content: string) => {
 
     await saveFile(browserWindow, content);
 });
+
+ipcMain.handle('has-changes', async (event, content: string) => {
+    const browserWindow = BrowserWindow.fromWebContents(event.sender);
+    const changed = hasChanges(content);
+
+    browserWindow?.setDocumentEdited(changed);
+
+    return changed;
+});
+
+ipcMain.on('show-in-folder', () => {
+    if (currentFile.filePath) {
+        shell.showItemInFolder(currentFile.filePath);
+    }
+});
+
+ipcMain.on('open-in-default', async () => {
+    if (currentFile.filePath) {
+        await shell.openPath(currentFile.filePath);
+    }
+});
+
+const template: MenuItemConstructorOptions[] = [
+    {
+        label: 'File',
+        submenu: [
+            {
+                label: 'Open',
+                click: () => {
+                    let browserWindow = BrowserWindow.getFocusedWindow();
+                    if (!browserWindow) browserWindow = createWindow();
+                    showOpenDialog(browserWindow);
+                },
+                accelerator: 'CmdOrCtrl+O',
+            },
+        ],
+    },
+    { label: 'Edit', role: 'editMenu' },
+];
+if (isMac) {
+    template.unshift({
+        label: app.name,
+        role: 'appMenu',
+    });
+}
+
+const menu = Menu.buildFromTemplate(template);
+
+Menu.setApplicationMenu(menu);
