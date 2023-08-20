@@ -18,3 +18,8 @@ Elements.OpenFileButton.addEventListener('click', () => {
 Elements.ExportHtmlButton.addEventListener('click', () => {
     window.api.showExportHtmlDialog(Elements.RenderedView.innerHTML);
 });
+
+Elements.SaveMarkdownButton.addEventListener('click', () => {
+    const markdown = Elements.MarkdownView.value;
+    window.api.saveFile(markdown);
+});
